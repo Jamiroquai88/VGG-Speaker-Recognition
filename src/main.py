@@ -50,18 +50,19 @@ def main():
     vallist, vallb = toolkits.get_voxceleb2_datalist(args, path='../meta/voxlb2_val.txt')
 
     # construct the data generator.
-    params = {'dim': (257, 250, 1),
-              'mp_pooler': toolkits.set_mp(processes=12),
-              'nfft': 512,
-              'spec_len': 250,
-              'win_length': 400,
-              'hop_length': 160,
-              'n_classes': 5994,
-              'sampling_rate': 16000,
-              'batch_size': args.batch_size,
-              'shuffle': True,
-              'normalize': True,
-              }
+    params = {
+        'dim': (30, 250, 1),
+        'mp_pooler': toolkits.set_mp(processes=4),
+        'nfft': 512,
+        'spec_len': 250,
+        'win_length': 400,
+        'hop_length': 160,
+        'n_classes': 5994,
+        'sampling_rate': 16000,
+        'batch_size': args.batch_size,
+        'shuffle': True,
+        'normalize': True,
+    }
 
     # Datasets
     partition = {'train': trnlist.flatten(), 'val': vallist.flatten()}

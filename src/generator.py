@@ -3,6 +3,7 @@ import keras
 import numpy as np
 import utils as ut
 
+
 class DataGenerator(keras.utils.Sequence):
     'Generates data for Keras'
     def __init__(self, list_IDs, labels, dim, mp_pooler, augmentation=True, batch_size=32, nfft=512, spec_len=250,
@@ -53,8 +54,7 @@ class DataGenerator(keras.utils.Sequence):
 
     def __data_generation_mp(self, list_IDs_temp, indexes):
         X = [self.mp_pooler.apply_async(ut.load_data,
-                                        args=(ID, self.win_length, self.sr, self.hop_length,
-                                        self.nfft, self.spec_len)) for ID in list_IDs_temp]
+                                        args=(ID, )) for ID in list_IDs_temp]
         X = np.expand_dims(np.array([p.get() for p in X]), -1)
         y = self.labels[indexes]
         return X, keras.utils.to_categorical(y, num_classes=self.n_classes)
@@ -69,8 +69,7 @@ class DataGenerator(keras.utils.Sequence):
         # Generate data
         for i, ID in enumerate(list_IDs_temp):
             # Store sample
-            X[i, :, :, 0] = ut.load_data(ID, win_length=self.win_length, sr=self.sr, hop_length=self.hop_length,
-                                         n_fft=self.nfft, spec_len=self.spec_len)
+            X[i, :, :, 0] = ut.load_data(ID)
             # Store class
             y[i] = self.labels[indexes[i]]
 

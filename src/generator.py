@@ -58,7 +58,7 @@ class DataGenerator(keras.utils.Sequence):
 
     def __data_generation_mp(self, list_IDs_temp, indexes):
         X = [self.mp_pooler.apply_async(ut.load_data,
-                                        args=(ID, 'train', self.spec_len, self.tmp_dir)
+                                        args=(ID, 'train', self.spec_len)
                                         ) for ID in list_IDs_temp]
         X = np.expand_dims(np.array([p.get() for p in X]), -1)
         y = self.labels[indexes]
@@ -74,7 +74,7 @@ class DataGenerator(keras.utils.Sequence):
         # Generate data
         for i, ID in enumerate(list_IDs_temp):
             # Store sample
-            X[i, :, :, 0] = ut.load_data(ID, mode='train', spec_len=self.spec_len, tmp_dir=self.tmp_dir)
+            X[i, :, :, 0] = ut.load_data(ID, mode='train', spec_len=self.spec_len)
             # Store class
             y[i] = self.labels[indexes[i]]
 

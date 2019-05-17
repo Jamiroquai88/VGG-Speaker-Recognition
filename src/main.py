@@ -1,23 +1,41 @@
 from __future__ import absolute_import
 from __future__ import print_function
+
+import argparse
 import os
+import random
 import sys
+
+import kaldi_io
 import keras
 import numpy as np
 
 sys.path.append('../tool')
+
+from utils import is_clean
 import toolkits
 
 # ===========================================
 #        Parse the argument
 # ===========================================
-import argparse
+
+random.seed(42)
+np.random.seed(42)
+
+
 parser = argparse.ArgumentParser()
+
 # set up training configuration.
 parser.add_argument('--gpu', default='', type=str)
 parser.add_argument('--resume', default='', type=str)
 parser.add_argument('--batch_size', default=64, type=int)
-parser.add_argument('--data_path', default='/scratch/local/ssd/weidi/voxceleb2/dev/wav', type=str)
+parser.add_argument('--kaldi-data-dir', required=True, type=str, help='path to kaldi data directory')
+parser.add_argument('--tmp-kaldi-dir', required=False, default='../data',
+                    help='path to directory, where new kaldi arks will be stored')
+parser.add_argument('--use-clean-only', required=False, default=False, action='store_true', help='use only clean data')
+parser.add_argument('--validation-ratio', required=False, type=float, default=0.05,
+                    help='ratio of validation data to all training data')
+# parser.add_argument('--files-per-split', required=False, type=int, default=1000, help='number of files in tmp split')
 # set up network configuration.
 parser.add_argument('--net', default='resnet34s', choices=['resnet34s', 'resnet34l'], type=str)
 parser.add_argument('--ghost_cluster', default=2, type=int)
@@ -32,8 +50,11 @@ parser.add_argument('--loss', default='softmax', choices=['softmax', 'amsoftmax'
 parser.add_argument('--optimizer', default='adam', choices=['adam', 'sgd'], type=str)
 parser.add_argument('--ohem_level', default=0, type=int,
                     help='pick hard samples from (ohem_level * batch_size) proposals, must be > 1')
+parser.add_argument('--num-dim', default=23, type=int, help='dimensionality of the features')
+
 global args
 args = parser.parse_args()
+
 
 def main():
 
@@ -46,27 +67,112 @@ def main():
     # ==================================
     #       Get Train/Val.
     # ==================================
-    trnlist, trnlb = toolkits.get_voxceleb2_datalist(args, path='../meta/voxlb2_train.txt')
-    vallist, vallb = toolkits.get_voxceleb2_datalist(args, path='../meta/voxlb2_val.txt')
+    feats_path = os.path.join(args.kaldi_data_dir, 'feats.scp')
+    utt2spk_path = os.path.join(args.kaldi_data_dir, 'utt2spk')
+    assert os.path.exists(feats_path), 'Path `{}` does not exists.'.format(feats_path)
+    assert os.path.exists(utt2spk_path), 'Path `{}` does not exists.'.format(utt2spk_path)
+
+    if not os.path.exists(args.tmp_kaldi_dir):
+        os.makedirs(args.tmp_kaldi_dir)
+
+    utt2ark = {}
+    with open(feats_path) as f:
+        for line in f:
+            key, ark = line.split()
+            if args.use_clean_only:
+                if not is_clean(key):
+                    continue
+            ark, position = ark.split(':')
+            utt2ark[key] = (key, ark, int(position))
+
+    # for key, mat in kaldi_io.read_mat_scp(feats_path):
+
+
+        # output_path = os.path.join(args.tmp_kaldi_dir, '{}.h5'.format(key))
+
+        # with h5py.File(output_path, 'w') as f:
+        #     f.create_dataset('segments', data=mat)
+
+    label2count, utt2label, label2int, label2utts = {}, {}, {}, {}
+    with open(utt2spk_path) as f:
+        for line in f:
+            utt, label = line.split()
+            if args.use_clean_only:
+                if not is_clean(utt):
+                    continue
+            if label not in label2int:
+                label2int[label] = len(label2int)
+            label = label2int[label]
+            utt2label[utt] = label
+            if label not in label2count:
+                label2count[label] = 0
+            label2count[label] += 1
+            if label not in label2utts:
+                label2utts[label] = []
+            label2utts[label].append(utt2ark[utt])
+
+    # balancing classes
+    trnlist, vallist, trnlb, vallb = [], [], [], []
+    max_utts = max(label2count.values())
+    for label in label2utts:
+        # print('Balancing', label)
+        validation_thr = label2count[label] * args.validation_ratio
+        random.shuffle(label2utts[label])
+        utts_array = np.array(label2utts[label])
+        random_indexes = np.random.randint(low=0, high=label2count[label] - 1, size=max_utts)
+        trn_indexes = random_indexes[random_indexes > validation_thr]
+        val_indexes = random_indexes[random_indexes <= validation_thr]
+        # print(np.max(trn_indexes), np.min(trn_indexes), np.max(val_indexes), np.min(val_indexes))
+        trnlist.extend([(x[0], x[1], int(x[2])) for x in utts_array[trn_indexes]])
+        trnlb.extend([label for x in range(len(trnlist))])
+        # print(trnlist[:10], trnlb[:10])
+        # 1/0
+        vallist.extend([(x[0], x[1], int(x[2])) for x in utts_array[val_indexes]])
+        vallb.extend([label for x in range(len(vallist))])
+
+    # print(all_list[:10])
+    # print(label2int)
+    # print(label2count)
+    # 1/0
+
+    # label2val_count, trnlist, vallist, trnlb, vallb = {}, [], [], [], []
+    # for utt in all_list:
+    #     label = utt2label[utt[0]]
+    #     if label not in label2val_count:
+    #         label2val_count[label] = 0
+    #     if label2val_count[label] <= label2count[label] * args.validation_ratio:
+    #         # use for validation
+    #         vallist.append(utt)
+    #         vallb.append(label)
+    #         label2val_count[label] += 1
+    #     else:
+    #         # use for training
+    #         trnlist.append(utt)
+    #         trnlb.append(label)
+
+    # trnlb = keras.utils.to_categorical(trnlb)
+    # vallb = keras.utils.to_categorical(vallb)
 
     # construct the data generator.
     params = {
-        'dim': (30, 250, 1),
-        'mp_pooler': toolkits.set_mp(processes=4),
+        'dim': (args.num_dim, 250, 1),
+        'mp_pooler': toolkits.set_mp(processes=8),
         'nfft': 512,
         'spec_len': 250,
         'win_length': 400,
         'hop_length': 160,
-        'n_classes': 5994,
+        'n_classes': len(label2count),
         'sampling_rate': 16000,
         'batch_size': args.batch_size,
         'shuffle': True,
         'normalize': True,
+        'tmp_dir': args.tmp_kaldi_dir,
+        'use_clean_only': args.use_clean_only
     }
 
     # Datasets
-    partition = {'train': trnlist.flatten(), 'val': vallist.flatten()}
-    labels = {'train': trnlb.flatten(), 'val': vallb.flatten()}
+    partition = {'train': trnlist, 'val': vallist}
+    labels = {'train': np.array(trnlb), 'val': np.array(vallb)}
 
     # Generators
     trn_gen = generator.DataGenerator(partition['train'], labels['train'], **params)
@@ -85,8 +191,9 @@ def main():
             print("==> no checkpoint found at '{}'".format(args.resume))
 
     print(network.summary())
-    print('==> gpu {} is, training {} images, classes: 0-{} '
-          'loss: {}, aggregation: {}, ohemlevel: {}'.format(args.gpu, len(partition['train']), np.max(labels['train']),
+    print('==> gpu {} is, training {} features, validating {} features, classes: 0-{} '
+          'loss: {}, aggregation: {}, ohemlevel: {}'.format(args.gpu, len(partition['train']),
+                                                            len(partition['val']), np.max(labels['train']),
                                                             args.loss, args.aggregation_mode, args.ohem_level))
 
     model_path, log_path = set_path(args)

@@ -30,7 +30,7 @@ parser.add_argument('--resume', default='', type=str)
 parser.add_argument('--batch_size', default=64, type=int)
 parser.add_argument('--kaldi-data-dir', required=True, type=str, help='path to kaldi data directory')
 parser.add_argument('--use-clean-only', required=False, default=False, action='store_true', help='use only clean data')
-parser.add_argument('--validation-ratio', required=False, type=float, default=0.05,
+parser.add_argument('--validation-ratio', required=False, type=float, default=0.01,
                     help='ratio of validation data to all training data')
 # parser.add_argument('--files-per-split', required=False, type=int, default=1000, help='number of files in tmp split')
 # set up network configuration.
@@ -142,7 +142,7 @@ def main():
     # construct the data generator.
     params = {
         'dim': (args.num_dim, 250, 1),
-        'mp_pooler': toolkits.set_mp(processes=8),
+        'mp_pooler': toolkits.set_mp(processes=4 * len(args.gpu.split(',')) + 1),
         'nfft': 512,
         'spec_len': 250,
         'win_length': 400,

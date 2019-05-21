@@ -78,11 +78,11 @@ def amsoftmax_loss(y_true, y_pred, scale=30, margin=0.35):
 
 
 def vggvox_resnet2d_icassp(input_dim=(30, 250, 1), num_class=8631, mode='train', args=None):
-    net=args.net
-    loss=args.loss
-    vlad_clusters=args.vlad_cluster
-    ghost_clusters=args.ghost_cluster
-    bottleneck_dim=args.bottleneck_dim
+    net = args.net
+    loss = args.loss
+    vlad_clusters = args.vlad_cluster
+    ghost_clusters = args.ghost_cluster
+    bottleneck_dim = args.bottleneck_dim
     aggregation = args.aggregation_mode
     mgpu = len(keras.backend.tensorflow_backend._get_available_gpus())
 

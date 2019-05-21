@@ -181,8 +181,11 @@ def vggvox_resnet2d_icassp(input_dim=(30, 250, 1), num_class=8631, mode='train',
         if mgpu > 1:
             model = ModelMGPU(model, gpus=mgpu)
         # set up optimizer.
-        if args.optimizer == 'adam':  opt = keras.optimizers.Adam(lr=1e-3)
-        elif args.optimizer =='sgd':  opt = keras.optimizers.SGD(lr=0.1, momentum=0.9, decay=0.0, nesterov=True)
-        else: raise IOError('==> unknown optimizer type')
+        if args.optimizer == 'adam':
+            opt = keras.optimizers.Adam(lr=1e-3)
+        elif args.optimizer == 'sgd':
+            opt = keras.optimizers.SGD(lr=0.1, momentum=0.9, decay=0.0, nesterov=True)
+        else:
+            raise IOError('==> unknown optimizer type')
         model.compile(optimizer=opt, loss=trnloss, metrics=['acc'])
     return model

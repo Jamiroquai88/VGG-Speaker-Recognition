@@ -161,6 +161,7 @@ def main():
 
     # Generators
     trn_gen = generator.DataGenerator(partition['train'], labels['train'], **params)
+    val_gen = generator.DataGenerator(partition['val'], labels['val'], **params)
     network = model.vggvox_resnet2d_icassp(input_dim=params['dim'],
                                            num_class=params['n_classes'],
                                            mode='train', args=args)
@@ -215,7 +216,9 @@ def main():
                               callbacks=callbacks,
                               use_multiprocessing=False,
                               workers=1,
-                              verbose=1)
+                              verbose=1,
+                              validation_data=val_gen,
+                              validation_steps=int(len(vallist) // args.batch_size))
 
     else:
         network.fit_generator(trn_gen,
@@ -225,7 +228,9 @@ def main():
                               callbacks=callbacks,
                               use_multiprocessing=False,
                               workers=1,
-                              verbose=1)
+                              verbose=1,
+                              validation_data=val_gen,
+                              validation_steps=int(len(vallist) // args.batch_size))
 
 
 def step_decay(epoch):

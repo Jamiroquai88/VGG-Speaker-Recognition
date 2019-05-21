@@ -27,7 +27,6 @@ class DataGenerator(keras.utils.Sequence):
         self.augmentation = augmentation
         self.on_epoch_end()
 
-        self.tmp_dir = tmp_dir
         self.use_clean_only = use_clean_only
 
     def __len__(self):

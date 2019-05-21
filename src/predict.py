@@ -8,6 +8,8 @@ sys.path.append('../tool')
 import toolkits
 import utils as ut
 
+import kaldi_io
+
 import pdb
 # ===========================================
 #        Parse the argument
@@ -16,21 +18,24 @@ import argparse
 parser = argparse.ArgumentParser()
 # set up training configuration.
 parser.add_argument('--gpu', default='', type=str)
-parser.add_argument('--resume', default='', type=str)
+parser.add_argument('--resume', default='', required=True, type=str)
 parser.add_argument('--batch_size', default=16, type=int)
+parser.add_argument('--kaldi-data-dirs', required=True, nargs='+', help='path to kaldi data directories')
+parser.add_argument('--emb-out-dirs', required=True, nargs='+', help='output directories for storing embeddings')
 parser.add_argument('--data_path', default='/media/weidi/2TB-2/datasets/voxceleb1/wav', type=str)
 # set up network configuration.
 parser.add_argument('--net', default='resnet34s', choices=['resnet34s', 'resnet34l'], type=str)
 parser.add_argument('--ghost_cluster', default=2, type=int)
-parser.add_argument('--vlad_cluster', default=8, type=int)
+parser.add_argument('--vlad_cluster', default=10, type=int)
 parser.add_argument('--bottleneck_dim', default=512, type=int)
 parser.add_argument('--aggregation_mode', default='gvlad', choices=['avg', 'vlad', 'gvlad'], type=str)
 # set up learning rate, training loss and optimizer.
 parser.add_argument('--loss', default='softmax', choices=['softmax', 'amsoftmax'], type=str)
-parser.add_argument('--test_type', default='normal', choices=['normal', 'hard', 'extend'], type=str)
 
 global args
 args = parser.parse_args()
+
+assert len(args.kaldi_data_dirs) == len(args.emb_out_dirs)
 
 def main():
 
@@ -38,32 +43,12 @@ def main():
     toolkits.initialize_GPU(args)
 
     import model
-    # ==================================
-    #       Get Train/Val.
-    # ==================================
-    print('==> calculating test({}) data lists...'.format(args.test_type))
-
-    if args.test_type == 'normal':
-        verify_list = np.loadtxt('../meta/voxceleb1_veri_test.txt', str)
-    elif args.test_type == 'hard':
-        verify_list = np.loadtxt('../meta/voxceleb1_veri_test_hard.txt', str)
-    elif args.test_type == 'extend':
-        verify_list = np.loadtxt('../meta/voxceleb1_veri_test_extended.txt', str)
-    else:
-        raise IOError('==> unknown test type.')
-
-    verify_lb = np.array([int(i[0]) for i in verify_list])
-    list1 = np.array([os.path.join(args.data_path, i[1]) for i in verify_list])
-    list2 = np.array([os.path.join(args.data_path, i[2]) for i in verify_list])
-
-    total_list = np.concatenate((list1, list2))
-    unique_list = np.unique(total_list)
 
     # ==================================
     #       Get Model
     # ==================================
     # construct the data generator.
-    params = {'dim': (30, None, 1),
+    params = {'dim': (23, None, 1),
               'nfft': 512,
               'spec_len': 250,
               'win_length': 400,
@@ -77,63 +62,51 @@ def main():
                                                 num_class=params['n_classes'],
                                                 mode='eval', args=args)
 
+    utt2ark, utt2idx, all_list, utt2data = {}, {}, [], {}
+    for idx, kaldi_data_dir in enumerate(args.kaldi_data_dirs):
+        if not os.path.exists(args.emb_out_dirs[idx]):
+            os.makedirs(args.emb_out_dirs[idx])
+        feats_path = os.path.join(kaldi_data_dir, 'feats.scp')
+        vad_path = os.path.join(kaldi_data_dir, 'vad.scp')
+        assert os.path.exists(feats_path), 'Path `{}` does not exists.'.format(feats_path)
+
+        with open(feats_path) as f:
+            for line in f:
+                key, ark = line.split()
+                ark, position = ark.split(':')
+                input_tuple = (key, ark, int(position))
+                utt2data[key] = ut.load_data(input_tuple, mode='eval')
+                utt2idx[key] = idx
+
+        with open(vad_path) as f:
+            for line in f:
+                key, ark = line.split()
+                ark, position = ark.split(':')
+                vad_array = None
+                for ark_key, vec in kaldi_io.read_vec_flt_ark(ark):
+                    if key == ark_key:
+                        vad_array = np.array(vec, dtype=bool)
+                assert vad_array is not None
+
+                assert vad_array.size == utt2data[key].shape[1], 'Shapes does not fit: vad {}, mfcc {}'.format(
+                    vad_array.size, utt2data[key].shape[1])
+                utt2data[key] = ut.apply_cmvn_sliding(utt2data[key]).T[vad_array]
+
     # ==> load pre-trained model ???
-    if args.resume:
-        # ==> get real_model from arguments input,
-        # load the model if the imag_model == real_model.
-        if os.path.isfile(args.resume):
-            network_eval.load_weights(os.path.join(args.resume), by_name=True)
-            result_path = set_result_path(args)
-            print('==> successfully loading model {}.'.format(args.resume))
-        else:
-            raise IOError("==> no checkpoint found at '{}'".format(args.resume))
+    if os.path.isfile(args.resume):
+        network_eval.load_weights(os.path.join(args.resume), by_name=True)
+        print('==> successfully loaded model {}.'.format(args.resume))
     else:
-        raise IOError('==> please type in the model to load')
+        raise IOError("==> no checkpoint found at '{}'".format(args.resume))
 
     print('==> start testing.')
 
     # The feature extraction process has to be done sample-by-sample,
     # because each sample is of different lengths.
-    total_length = len(unique_list)
-    feats, scores, labels = [], [], []
-    for c, ID in enumerate(unique_list):
-        if c % 50 == 0: print('Finish extracting features for {}/{}th wav.'.format(c, total_length))
-        specs = ut.load_data(ID, mode='eval')
-        specs = np.expand_dims(np.expand_dims(specs, 0), -1)
-    
-        v = network_eval.predict(specs)
-        feats += [v]
-    
-    feats = np.array(feats)
-
-    # ==> compute the pair-wise similarity.
-    for c, (p1, p2) in enumerate(zip(list1, list2)):
-        ind1 = np.where(unique_list == p1)[0][0]
-        ind2 = np.where(unique_list == p2)[0][0]
-
-        v1 = feats[ind1, 0]
-        v2 = feats[ind2, 0]
-
-        scores += [np.sum(v1*v2)]
-        labels += [verify_lb[c]]
-        print('scores : {}, gt : {}'.format(scores[-1], verify_lb[c]))
-
-    scores = np.array(scores)
-    labels = np.array(labels)
-
-    np.save(os.path.join(result_path, 'prediction_scores.npy'), scores)
-    np.save(os.path.join(result_path, 'groundtruth_labels.npy'), labels)
-
-    eer, thresh = toolkits.calculate_eer(labels, scores)
-    print('==> model : {}, EER: {}'.format(args.resume, eer))
-
-
-def set_result_path(args):
-    model_path = args.resume
-    exp_path = model_path.split(os.sep)
-    result_path = os.path.join('../result', exp_path[2], exp_path[3])
-    if not os.path.exists(result_path): os.makedirs(result_path)
-    return result_path
+    for idx, utt in enumerate(utt2data):
+        embedding = network_eval.predict(utt2data[utt].T[np.newaxis, :, :, np.newaxis]).squeeze()
+        ut.write_txt_vectors(
+            os.path.join(args.emb_out_dirs[utt2idx[utt]], 'xvector.{}.txt'.format(idx)), {utt: embedding})
 
 
 if __name__ == "__main__":

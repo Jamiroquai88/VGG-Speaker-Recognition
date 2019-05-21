@@ -6,7 +6,6 @@ import os
 import random
 import sys
 
-import kaldi_io
 import keras
 import numpy as np
 
@@ -30,8 +29,6 @@ parser.add_argument('--gpu', default='', type=str)
 parser.add_argument('--resume', default='', type=str)
 parser.add_argument('--batch_size', default=64, type=int)
 parser.add_argument('--kaldi-data-dir', required=True, type=str, help='path to kaldi data directory')
-parser.add_argument('--tmp-kaldi-dir', required=False, default='../data',
-                    help='path to directory, where new kaldi arks will be stored')
 parser.add_argument('--use-clean-only', required=False, default=False, action='store_true', help='use only clean data')
 parser.add_argument('--validation-ratio', required=False, type=float, default=0.05,
                     help='ratio of validation data to all training data')
@@ -72,9 +69,6 @@ def main():
     assert os.path.exists(feats_path), 'Path `{}` does not exists.'.format(feats_path)
     assert os.path.exists(utt2spk_path), 'Path `{}` does not exists.'.format(utt2spk_path)
 
-    if not os.path.exists(args.tmp_kaldi_dir):
-        os.makedirs(args.tmp_kaldi_dir)
-
     utt2ark = {}
     with open(feats_path) as f:
         for line in f:
@@ -84,14 +78,6 @@ def main():
                     continue
             ark, position = ark.split(':')
             utt2ark[key] = (key, ark, int(position))
-
-    # for key, mat in kaldi_io.read_mat_scp(feats_path):
-
-
-        # output_path = os.path.join(args.tmp_kaldi_dir, '{}.h5'.format(key))
-
-        # with h5py.File(output_path, 'w') as f:
-        #     f.create_dataset('segments', data=mat)
 
     label2count, utt2label, label2int, label2utts = {}, {}, {}, {}
     with open(utt2spk_path) as f:
@@ -166,7 +152,6 @@ def main():
         'batch_size': args.batch_size,
         'shuffle': True,
         'normalize': True,
-        'tmp_dir': args.tmp_kaldi_dir,
         'use_clean_only': args.use_clean_only
     }
 

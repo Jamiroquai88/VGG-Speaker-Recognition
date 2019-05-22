@@ -129,8 +129,7 @@ def main():
         'sampling_rate': 8000,
         'batch_size': args.batch_size,
         'shuffle': True,
-        'normalize': True,
-        'use_clean_only': args.use_clean_only
+        'normalize': True
     }
 
     network = model.vggvox_resnet2d_icassp(input_dim=params['dim'],

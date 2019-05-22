@@ -120,7 +120,7 @@ def main():
     # construct the data generator.
     params = {
         'dim': (args.num_dim, 250, 1),
-        'mp_pooler': toolkits.set_mp(processes=4 * len(args.gpu.split(',')) + 1),
+        'mp_pooler': toolkits.set_mp(processes=8),
         'nfft': 512,
         'spec_len': 250,
         'win_length': 400,

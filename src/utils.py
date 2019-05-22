@@ -32,9 +32,10 @@ def load_data(path, win_length=400, sr=8000, hop_length=160, n_fft=512, spec_len
     with tempfile.NamedTemporaryFile() as f:
         key, cmd = path
         if len(cmd) == 1:
-            path = cmd[0:-1]
+            path = cmd[0]
         else:
-            subprocess.check_call(args=cmd, stdout=f.name)
+            cmd = cmd[0:-1]
+            subprocess.check_call(args=[' '.join(cmd)], stdout=f, shell=True)
             path = f.name
         wav = load_wav(path, sr=sr, mode=mode)
 

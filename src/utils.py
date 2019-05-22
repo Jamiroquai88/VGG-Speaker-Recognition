@@ -26,7 +26,7 @@ def load_data(path, mode='train', spec_len=250):
     """
     utt, ark, position = path
     mat = list(kaldi_io.read_mat_ark(ark, offset=position))[0]
-    segments = mat.transpose().copy()
+    segments = mat
 
     assert len(segments.shape) == 2, 'Segment `{}` for path `{}` does not have 2 dimensions.'.format(utt, ark)
 

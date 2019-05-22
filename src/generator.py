@@ -59,7 +59,7 @@ class DataGenerator(keras.utils.Sequence):
         X = [self.mp_pooler.apply_async(ut.load_data,
                                         args=(ID, 'train', self.spec_len)
                                         ) for ID in list_IDs_temp]
-        X = np.expand_dims(np.array([p.get() for p in X]), -1)
+        # X = np.expand_dims(np.array([p.get() for p in X]), -1)
         y = self.labels[indexes]
         return X, keras.utils.to_categorical(y, num_classes=self.n_classes)
 

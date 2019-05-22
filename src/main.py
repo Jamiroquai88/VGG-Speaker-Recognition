@@ -108,9 +108,9 @@ def main():
         random_indexes = np.random.randint(low=0, high=label2count[label] - 1, size=max_utts)
         trn_indexes = random_indexes[random_indexes > validation_thr]
         val_indexes = random_indexes[random_indexes <= validation_thr]
-        trnlist.extend([(x[0], x[1], int(x[2])) for x in utts_array[trn_indexes]])
+        trnlist.extend([(x[0], x[1]) for x in utts_array[trn_indexes]])
         trnlb.extend([label for x in range(len(trnlist))])
-        vallist.extend([(x[0], x[1], int(x[2])) for x in utts_array[val_indexes]])
+        vallist.extend([(x[0], x[1]) for x in utts_array[val_indexes]])
         vallb.extend([label for x in range(len(vallist))])
 
     # Datasets

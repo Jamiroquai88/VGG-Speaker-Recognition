@@ -5,7 +5,7 @@ from keras import layers
 from keras.regularizers import l2
 from keras.layers import Activation, Conv1D, Input
 from keras.layers import BatchNormalization
-from keras.layers import MaxPooling2D
+from keras.layers import MaxPooling1D
 
 weight_decay = 1e-4
 
@@ -166,34 +166,33 @@ def resnet_2D_v1(input_dim, mode='train'):
     # ===============================================
     #            Convolution Section 2
     # ===============================================
-    x2 = conv_block_2D(x1, filters=[48, 48, 96], stage=2, block='a', kernel_size=5, dilation=1,
-                       trainable=True, shortcut_kernel_size=9)
+    x2 = conv_block_2D(x1, filters=[48, 48, 96], stage=2, block='a', kernel_size=25, dilation=1,
+                       trainable=True, shortcut_kernel_size=49)
     x2 = identity_block_2D(x2, filters=[48, 48, 96], stage=2, block='b', kernel_size=1, dilation=1,
                            trainable=True)
 
     # ===============================================
     #            Convolution Section 3
     # ===============================================
-    x3 = conv_block_2D(x2, filters=[96, 96, 128], stage=3, block='a', kernel_size=5, dilation=1, trainable=True,
-                       shortcut_kernel_size=9)
+    x3 = conv_block_2D(x2, filters=[96, 96, 128], stage=3, block='a', kernel_size=25, dilation=1, trainable=True,
+                       shortcut_kernel_size=49)
     x3 = identity_block_2D(x3, filters=[96, 96, 128], stage=3, block='b', kernel_size=1, trainable=True)
     x3 = identity_block_2D(x3, filters=[96, 96, 128], stage=3, block='c', kernel_size=1, trainable=True)
     # ===============================================
     #            Convolution Section 4
     # ===============================================
-    x4 = conv_block_2D(x3, filters=[128, 128, 256], stage=4, block='a', kernel_size=5, dilation=2,
-                       trainable=True, shortcut_kernel_size=9)
+    x4 = conv_block_2D(x3, filters=[128, 128, 256], stage=4, block='a', kernel_size=12, dilation=2,
+                       trainable=True, shortcut_kernel_size=23)
     x4 = identity_block_2D(x4, filters=[128, 128, 256], stage=4, block='b', kernel_size=1, trainable=True)
     x4 = identity_block_2D(x4, filters=[128, 128, 256], stage=4, block='c', kernel_size=1, trainable=True)
     # ===============================================
     #            Convolution Section 5
     # ===============================================
-    x5 = conv_block_2D(x4, filters=[256, 256, 512], stage=5, block='a', kernel_size=5, dilation=2,
-                       trainable=True, shortcut_kernel_size=9)
+    x5 = conv_block_2D(x4, filters=[256, 256, 512], stage=5, block='a', kernel_size=12, dilation=2,
+                       trainable=True, shortcut_kernel_size=23)
     x5 = identity_block_2D(x5, filters=[256, 256, 512], stage=5, block='b', kernel_size=1, trainable=True)
     x5 = identity_block_2D(x5, filters=[256, 256, 512], stage=5, block='c', kernel_size=1, trainable=True)
-    # y = MaxPooling2D((3, 1), strides=(2, 1), name='mpool2')(x5)
-    y = x5
+    y = MaxPooling1D(pool_size=3, name='mpool2')(x5)
     return inputs, y
 
 

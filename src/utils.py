@@ -31,12 +31,12 @@ def load_data(path, win_length=400, sr=8000, hop_length=160, n_fft=512, spec_len
     with tempfile.NamedTemporaryFile() as f:
         key, cmd = path
         if len(cmd) == 1:
-            path = cmd
+            path = cmd[0:-1]
         else:
             subprocess.check_call(args=cmd, stdout=f.name)
             path = f.name
         wav = load_wav(path, sr=sr, mode=mode)
-        
+
     linear_spect = lin_spectogram_from_wav(wav, hop_length, win_length, n_fft)
     mag, _ = librosa.magphase(linear_spect)  # magnitude
     mag_T = mag.T

@@ -1,248 +1,106 @@
-from __future__ import print_function
-from __future__ import absolute_import
+# System
+import keras
+import numpy as np
+import utils as ut
 
-from keras import layers
-from keras.regularizers import l2
-from keras.layers import Activation, Conv1D, Input
-from keras.layers import BatchNormalization
-from keras.layers import MaxPooling1D
-
-weight_decay = 1e-4
-
-
-def identity_block_2D(input_tensor, filters, stage, block, kernel_size=3, dilation=2, trainable=True):
-    """The identity block is the block that has no conv layer at shortcut.
-    # Arguments
-        input_tensor: input tensor
-        kernel_size: default 3, the kernel size of middle conv layer at main path
-        filters: list of integers, the filterss of 3 conv layer at main path
-        stage: integer, current stage label, used for generating layer names
-        block: 'a','b'..., current block label, used for generating layer names
-    # Returns
-        Output tensor for the block.
-    """
-    filters1, filters2, filters3 = filters
-    bn_axis = 2
-
-    conv_name_1 = 'conv' + str(stage) + '_' + str(block) + '_1x1_reduce'
-    bn_name_1 = 'conv' + str(stage) + '_' + str(block) + '_1x1_reduce/bn'
-    x = Conv1D(filters1,
-               kernel_size=kernel_size,
-               kernel_initializer='orthogonal',
-               dilation_rate=dilation,
-               use_bias=False,
-               trainable=trainable,
-               kernel_regularizer=l2(weight_decay),
-               name=conv_name_1)(input_tensor)
-    x = BatchNormalization(axis=bn_axis, trainable=trainable, name=bn_name_1)(x)
-    x = Activation('relu')(x)
-
-    conv_name_2 = 'conv' + str(stage) + '_' + str(block) + '_3x3'
-    bn_name_2 = 'conv' + str(stage) + '_' + str(block) + '_3x3/bn'
-    x = Conv1D(filters2,
-               kernel_size=kernel_size,
-               dilation_rate=dilation,
-               padding='same',
-               kernel_initializer='orthogonal',
-               use_bias=False,
-               trainable=trainable,
-               kernel_regularizer=l2(weight_decay),
-               name=conv_name_2)(x)
-    x = BatchNormalization(axis=bn_axis, trainable=trainable, name=bn_name_2)(x)
-    x = Activation('relu')(x)
-
-    conv_name_3 = 'conv' + str(stage) + '_' + str(block) + '_1x1_increase'
-    bn_name_3 = 'conv' + str(stage) + '_' + str(block) + '_1x1_increase/bn'
-    x = Conv1D(filters3,
-               kernel_size=kernel_size,
-               dilation_rate=dilation,
-               kernel_initializer='orthogonal',
-               use_bias=False,
-               trainable=trainable,
-               kernel_regularizer=l2(weight_decay),
-               name=conv_name_3)(x)
-    x = BatchNormalization(axis=bn_axis, trainable=trainable, name=bn_name_3)(x)
-
-    x = layers.add([x, input_tensor])
-    x = Activation('relu')(x)
-    return x
+class DataGenerator(keras.utils.Sequence):
+    'Generates data for Keras'
+    def __init__(self, list_IDs, labels, dim, mp_pooler, augmentation=True, batch_size=32, nfft=512, spec_len=250,
+                 win_length=400, sampling_rate=8000, hop_length=160, n_classes=5994, shuffle=True, normalize=True):
+        'Initialization'
+        self.dim = dim
+        self.nfft = nfft
+        self.sr = sampling_rate
+        self.spec_len = spec_len
+        self.normalize =normalize
+        self.mp_pooler = mp_pooler
+        self.win_length = win_length
+        self.hop_length = hop_length
 
 
-def conv_block_2D(input_tensor, filters, stage, block, kernel_size=3, shortcut_kernel_size=7,
-                  dilation=2, trainable=True):
-    """A block that has a conv layer at shortcut.
-    # Arguments
-        input_tensor: input tensor
-        kernel_size: default 3, the kernel size of middle conv layer at main path
-        filters: list of integers, the filterss of 3 conv layer at main path
-        stage: integer, current stage label, used for generating layer names
-        block: 'a','b'..., current block label, used for generating layer names
-    # Returns
-        Output tensor for the block.
-    Note that from stage 3, the first conv layer at main path is with strides=(2,2)
-    And the shortcut should have strides=(2,2) as well
-    """
-    filters1, filters2, filters3 = filters
-    bn_axis = 2
+        self.labels = labels
+        self.shuffle = shuffle
+        self.list_IDs = list_IDs
+        self.n_classes = n_classes
+        self.batch_size = batch_size
+        self.augmentation = augmentation
+        self.on_epoch_end()
 
-    conv_name_1 = 'conv' + str(stage) + '_' + str(block) + '_1x1_reduce'
-    bn_name_1 = 'conv' + str(stage) + '_' + str(block) + '_1x1_reduce/bn'
-    x = Conv1D(filters1,
-               kernel_size=kernel_size,
-               dilation_rate=dilation,
-               kernel_initializer='orthogonal',
-               use_bias=False,
-               trainable=trainable,
-               kernel_regularizer=l2(weight_decay),
-               name=conv_name_1)(input_tensor)
-    x = BatchNormalization(axis=bn_axis, trainable=trainable, name=bn_name_1)(x)
-    x = Activation('relu')(x)
+    def __len__(self):
+        'Denotes the number of batches per epoch'
+        return int(np.floor(len(self.list_IDs) / self.batch_size))
 
-    conv_name_2 = 'conv' + str(stage) + '_' + str(block) + '_3x3'
-    bn_name_2 = 'conv' + str(stage) + '_' + str(block) + '_3x3/bn'
-    x = Conv1D(filters2,
-               kernel_size=kernel_size,
-               dilation_rate=dilation,
-               padding='same',
-               kernel_initializer='orthogonal',
-               use_bias=False,
-               trainable=trainable,
-               kernel_regularizer=l2(weight_decay),
-               name=conv_name_2)(x)
-    x = BatchNormalization(axis=bn_axis, trainable=trainable, name=bn_name_2)(x)
-    x = Activation('relu')(x)
+    def __getitem__(self, index):
+        'Generate one batch of data'
+        # Generate indexes of the batch
+        indexes = self.indexes[index*self.batch_size:(index+1)*self.batch_size]
 
-    conv_name_3 = 'conv' + str(stage) + '_' + str(block) + '_1x1_increase'
-    bn_name_3 = 'conv' + str(stage) + '_' + str(block) + '_1x1_increase/bn'
-    x = Conv1D(filters3,
-               kernel_size=kernel_size,
-               dilation_rate=dilation,
-               kernel_initializer='orthogonal',
-               use_bias=False,
-               trainable=trainable,
-               kernel_regularizer=l2(weight_decay),
-               name=conv_name_3)(x)
-    x = BatchNormalization(axis=bn_axis, trainable=trainable, name=bn_name_3)(x)
+        # Find list of IDs
+        list_IDs_temp = [self.list_IDs[k] for k in indexes]
 
-    conv_name_4 = 'conv' + str(stage) + '_' + str(block) + '_1x1_proj'
-    bn_name_4 = 'conv' + str(stage) + '_' + str(block) + '_1x1_proj/bn'
-    shortcut = Conv1D(filters3,
-                      kernel_size=shortcut_kernel_size,
-                      dilation_rate=dilation,
-                      kernel_initializer='orthogonal',
-                      use_bias=False,
-                      trainable=trainable,
-                      kernel_regularizer=l2(weight_decay),
-                      name=conv_name_4)(input_tensor)
-    shortcut = BatchNormalization(axis=bn_axis, trainable=trainable, name=bn_name_4)(shortcut)
+        # Generate data
+        X, y = self.__data_generation_mp(list_IDs_temp, indexes)
 
-    x = layers.add([x, shortcut])
-    x = Activation('relu')(x)
-    return x
+        return X, y
 
 
-def resnet_2D_v1(input_dim, mode='train'):
-    bn_axis = 2
-    if mode == 'train':
-        inputs = Input(shape=input_dim, name='input')
-    else:
-        inputs = Input(shape=(input_dim[0], None, input_dim[-1]), name='input')
-    # ===============================================
-    #            Convolution Block 1
-    # ===============================================
-    x1 = Conv1D(64,
-                kernel_size=5,
-                dilation_rate=1,
-                kernel_initializer='orthogonal',
-                use_bias=False, trainable=True,
-                kernel_regularizer=l2(weight_decay),
-                padding='same',
-                name='conv1_1/3x3_s1')(inputs)
-
-    x1 = BatchNormalization(axis=bn_axis, name='conv1_1/3x3_s1/bn', trainable=True)(x1)
-    x1 = Activation('relu')(x1)
-    # x1 = MaxPooling2D((2, 2), strides=(2, 2))(x1)
-
-    # ===============================================
-    #            Convolution Section 2
-    # ===============================================
-    x2 = conv_block_2D(x1, filters=[48, 48, 96], stage=2, block='a', kernel_size=25, dilation=1,
-                       trainable=True, shortcut_kernel_size=49)
-    x2 = identity_block_2D(x2, filters=[48, 48, 96], stage=2, block='b', kernel_size=1, dilation=1,
-                           trainable=True)
-
-    # ===============================================
-    #            Convolution Section 3
-    # ===============================================
-    x3 = conv_block_2D(x2, filters=[96, 96, 128], stage=3, block='a', kernel_size=25, dilation=1, trainable=True,
-                       shortcut_kernel_size=49)
-    x3 = identity_block_2D(x3, filters=[96, 96, 128], stage=3, block='b', kernel_size=1, trainable=True)
-    x3 = identity_block_2D(x3, filters=[96, 96, 128], stage=3, block='c', kernel_size=1, trainable=True)
-    # ===============================================
-    #            Convolution Section 4
-    # ===============================================
-    x4 = conv_block_2D(x3, filters=[128, 128, 256], stage=4, block='a', kernel_size=12, dilation=2,
-                       trainable=True, shortcut_kernel_size=23)
-    x4 = identity_block_2D(x4, filters=[128, 128, 256], stage=4, block='b', kernel_size=1, trainable=True)
-    x4 = identity_block_2D(x4, filters=[128, 128, 256], stage=4, block='c', kernel_size=1, trainable=True)
-    # ===============================================
-    #            Convolution Section 5
-    # ===============================================
-    x5 = conv_block_2D(x4, filters=[256, 256, 512], stage=5, block='a', kernel_size=12, dilation=2,
-                       trainable=True, shortcut_kernel_size=23)
-    x5 = identity_block_2D(x5, filters=[256, 256, 512], stage=5, block='b', kernel_size=1, trainable=True)
-    x5 = identity_block_2D(x5, filters=[256, 256, 512], stage=5, block='c', kernel_size=1, trainable=True)
-    y = MaxPooling1D(pool_size=3, name='mpool2')(x5)
-    return inputs, y
+    def on_epoch_end(self):
+        'Updates indexes after each epoch'
+        self.indexes = np.arange(len(self.list_IDs))
+        if self.shuffle:
+            np.random.shuffle(self.indexes)
 
 
-def resnet_2D_v2(input_dim, mode='train'):
-    bn_axis = 2
-    if mode == 'train':
-        inputs = Input(shape=input_dim, name='input')
-    else:
-        inputs = Input(shape=(input_dim[0], None, input_dim[-1]), name='input')
-    # ===============================================
-    #            Convolution Block 1
-    # ===============================================
-    x1 = Conv1D(64,
-                kernel_size=5,
-                dilation_rate=1,
-                kernel_initializer='orthogonal',
-                use_bias=False, trainable=True,
-                kernel_regularizer=l2(weight_decay),
-                padding='same',
-                name='conv1_1/3x3_s1')(inputs)
-
-    x1 = BatchNormalization(axis=bn_axis, name='conv1_1/3x3_s1/bn', trainable=True)(x1)
-    x1 = Activation('relu')(x1)
-    # x1 = MaxPooling2D((2, 2), strides=(2, 2))(x1)
-
-    # ===============================================
-    #            Convolution Section 2
-    # ===============================================
-    x2 = conv_block_2D(x1, 3, [64, 64, 256], stage=2, block='a', strides=(1, 1), trainable=True)
-    x2 = identity_block_2D(x2, 3, [64, 64, 256], stage=2, block='b', trainable=True)
-    x2 = identity_block_2D(x2, 3, [64, 64, 256], stage=2, block='c', trainable=True)
-    # ===============================================
-    #            Convolution Section 3
-    # ===============================================
-    x3 = conv_block_2D(x2, 3, [128, 128, 512], stage=3, block='a', trainable=True)
-    x3 = identity_block_2D(x3, 3, [128, 128, 512], stage=3, block='b', trainable=True)
-    x3 = identity_block_2D(x3, 3, [128, 128, 512], stage=3, block='c', trainable=True)
-    # ===============================================
-    #            Convolution Section 4
-    # ===============================================
-    x4 = conv_block_2D(x3, 3, [256, 256, 1024], stage=4, block='a', strides=(1, 1), trainable=True)
-    x4 = identity_block_2D(x4, 3, [256, 256, 1024], stage=4, block='b', trainable=True)
-    x4 = identity_block_2D(x4, 3, [256, 256, 1024], stage=4, block='c', trainable=True)
-    # ===============================================
-    #            Convolution Section 5
-    # ===============================================
-    x5 = conv_block_2D(x4, 3, [512, 512, 2048], stage=5, block='a', trainable=True)
-    x5 = identity_block_2D(x5, 3, [512, 512, 2048], stage=5, block='b', trainable=True)
-    x5 = identity_block_2D(x5, 3, [512, 512, 2048], stage=5, block='c', trainable=True)
-    y = MaxPooling2D((3, 1), strides=(2, 1), name='mpool2')(x5)
-    return inputs, y
+    def __data_generation_mp(self, list_IDs_temp, indexes):
+        X = [self.mp_pooler.apply_async(ut.load_data,
+                                        args=(ID, self.win_length, self.sr, self.hop_length,
+                                        self.nfft, self.spec_len)) for ID in list_IDs_temp]
+        X = np.expand_dims(np.array([p.get() for p in X]), -1)
+        y = self.labels[indexes]
+        return X, keras.utils.to_categorical(y, num_classes=self.n_classes)
 
 
+    def __data_generation(self, list_IDs_temp, indexes):
+        'Generates data containing batch_size samples' # X : (n_samples, *dim, n_channels)
+        # Initialization
+        X = np.empty((self.batch_size,) + self.dim)
+        y = np.empty((self.batch_size), dtype=int)
+
+        # Generate data
+        for i, ID in enumerate(list_IDs_temp):
+            # Store sample
+            X[i, :, :, 0] = ut.load_data(ID, win_length=self.win_length, sr=self.sr, hop_length=self.hop_length,
+                                         n_fft=self.nfft, spec_len=self.spec_len)
+            # Store class
+            y[i] = self.labels[indexes[i]]
+
+        return X, keras.utils.to_categorical(y, num_classes=self.n_classes)
+
+
+def OHEM_generator(model, datagen, steps, propose_time, batch_size, dims, nclass):
+    # propose_time : number of candidate batches.
+    # prop : the number of hard batches for training.
+    step = 0
+    interval = np.array([i*(batch_size // propose_time) for i in range(propose_time)] + [batch_size])
+
+    while True:
+        if step == 0 or step > steps - propose_time:
+            step = 0
+            datagen.on_epoch_end()
+
+        # propose samples,
+        samples = np.empty((batch_size,) + dims)
+        targets = np.empty((batch_size, nclass))
+
+        for i in range(propose_time):
+            x_data, y_data = datagen.__getitem__(index=step+i)
+            preds = model.predict(x_data, batch_size=batch_size)   # prediction score
+            errs = np.sum(y_data * preds, -1)
+            err_sort = np.argsort(errs)
+
+            indices = err_sort[:(interval[i+1]-interval[i])]
+            samples[interval[i]:interval[i+1]] = x_data[indices]
+            targets[interval[i]:interval[i+1]] = y_data[indices]
+
+        step += propose_time
+        yield samples, targets

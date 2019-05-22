@@ -64,20 +64,21 @@ def main():
     # ==================================
     #       Get Train/Val.
     # ==================================
-    feats_path = os.path.join(args.kaldi_data_dir, 'feats.scp')
+    wav_scp_path = os.path.join(args.kaldi_data_dir, 'wav.scp')
     utt2spk_path = os.path.join(args.kaldi_data_dir, 'utt2spk')
-    assert os.path.exists(feats_path), 'Path `{}` does not exists.'.format(feats_path)
+    assert os.path.exists(wav_scp_path), 'Path `{}` does not exists.'.format(wav_scp_path)
     assert os.path.exists(utt2spk_path), 'Path `{}` does not exists.'.format(utt2spk_path)
 
     utt2ark = {}
-    with open(feats_path) as f:
+    with open(wav_scp_path) as f:
         for line in f:
-            key, ark = line.split()
+            splitted_line = line.split()
+            key = splitted_line[0]
             if args.use_clean_only:
                 if not is_clean(key):
                     continue
-            ark, position = ark.split(':')
-            utt2ark[key] = (key, ark, int(position))
+            cmd = splitted_line[1:]
+            utt2ark[key] = (key, cmd)
 
     label2count, utt2label, label2int, label2utts = {}, {}, {}, {}
     with open(utt2spk_path) as f:
@@ -118,14 +119,14 @@ def main():
 
     # construct the data generator.
     params = {
-        'dim': (250, args.num_dim),
+        'dim': (257, 250, 1),
         'mp_pooler': toolkits.set_mp(processes=4 * len(args.gpu.split(',')) + 1),
         'nfft': 512,
         'spec_len': 250,
         'win_length': 400,
         'hop_length': 160,
         'n_classes': len(label2count),
-        'sampling_rate': 16000,
+        'sampling_rate': 8000,
         'batch_size': args.batch_size,
         'shuffle': True,
         'normalize': True,

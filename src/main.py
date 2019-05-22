@@ -47,7 +47,7 @@ parser.add_argument('--loss', default='softmax', choices=['softmax', 'amsoftmax'
 parser.add_argument('--optimizer', default='adam', choices=['adam', 'sgd'], type=str)
 parser.add_argument('--ohem_level', default=0, type=int,
                     help='pick hard samples from (ohem_level * batch_size) proposals, must be > 1')
-parser.add_argument('--num-dim', default=23, type=int, help='dimensionality of the features')
+parser.add_argument('--num-dim', default=257, type=int, help='dimensionality of the features')
 
 global args
 args = parser.parse_args()
@@ -119,7 +119,7 @@ def main():
 
     # construct the data generator.
     params = {
-        'dim': (257, 250, 1),
+        'dim': (args.num_dim, 250, 1),
         'mp_pooler': toolkits.set_mp(processes=4 * len(args.gpu.split(',')) + 1),
         'nfft': 512,
         'spec_len': 250,

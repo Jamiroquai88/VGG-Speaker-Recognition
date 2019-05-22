@@ -64,7 +64,7 @@ class VladPooling(keras.engine.Layer):
         cluster_res = K.sum(weighted_res, [1, 2])
 
         if self.mode == 'gvlad':
-            cluster_res = cluster_res[:self.k_centers, :]
+            cluster_res = cluster_res[:, :self.k_centers, :]
 
         cluster_l2 = K.l2_normalize(cluster_res, -1)
         outputs = K.reshape(cluster_l2, [-1, int(self.k_centers) * int(num_features)])
@@ -77,12 +77,12 @@ def amsoftmax_loss(y_true, y_pred, scale=30, margin=0.35):
     return K.categorical_crossentropy(y_true, y_pred, from_logits=True)
 
 
-def vggvox_resnet2d_icassp(input_dim=(30, 250, 1), num_class=8631, mode='train', args=None):
-    net = args.net
-    loss = args.loss
-    vlad_clusters = args.vlad_cluster
-    ghost_clusters = args.ghost_cluster
-    bottleneck_dim = args.bottleneck_dim
+def vggvox_resnet2d_icassp(input_dim=(257, 250, 1), num_class=8631, mode='train', args=None):
+    net=args.net
+    loss=args.loss
+    vlad_clusters=args.vlad_cluster
+    ghost_clusters=args.ghost_cluster
+    bottleneck_dim=args.bottleneck_dim
     aggregation = args.aggregation_mode
     mgpu = len(keras.backend.tensorflow_backend._get_available_gpus())
 
@@ -93,9 +93,8 @@ def vggvox_resnet2d_icassp(input_dim=(30, 250, 1), num_class=8631, mode='train',
     # ===============================================
     #            Fully Connected Block 1
     # ===============================================
-    x_fc = keras.layers.Conv1D(bottleneck_dim,
-                               kernel_size=5,
-                               strides=1,
+    x_fc = keras.layers.Conv2D(bottleneck_dim, (7, 1),
+                               strides=(1, 1),
                                activation='relu',
                                kernel_initializer='orthogonal',
                                use_bias=True, trainable=True,
@@ -125,9 +124,8 @@ def vggvox_resnet2d_icassp(input_dim=(30, 250, 1), num_class=8631, mode='train',
         x = VladPooling(k_centers=vlad_clusters, mode='vlad', name='vlad_pool')([x_fc, x_k_center])
 
     elif aggregation == 'gvlad':
-        x_k_center = keras.layers.Conv1D(vlad_clusters+ghost_clusters,
-                                         kernel_size=5,
-                                         strides=1,
+        x_k_center = keras.layers.Conv2D(vlad_clusters+ghost_clusters, (7, 1),
+                                         strides=(1, 1),
                                          kernel_initializer='orthogonal',
                                          use_bias=True, trainable=True,
                                          kernel_regularizer=keras.regularizers.l2(weight_decay),
@@ -183,11 +181,8 @@ def vggvox_resnet2d_icassp(input_dim=(30, 250, 1), num_class=8631, mode='train',
         if mgpu > 1:
             model = ModelMGPU(model, gpus=mgpu)
         # set up optimizer.
-        if args.optimizer == 'adam':
-            opt = keras.optimizers.Adam(lr=1e-3)
-        elif args.optimizer == 'sgd':
-            opt = keras.optimizers.SGD(lr=0.1, momentum=0.9, decay=0.0, nesterov=True)
-        else:
-            raise IOError('==> unknown optimizer type')
+        if args.optimizer == 'adam':  opt = keras.optimizers.Adam(lr=1e-3)
+        elif args.optimizer =='sgd':  opt = keras.optimizers.SGD(lr=0.1, momentum=0.9, decay=0.0, nesterov=True)
+        else: raise IOError('==> unknown optimizer type')
         model.compile(optimizer=opt, loss=trnloss, metrics=['acc'])
     return model

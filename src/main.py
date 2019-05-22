@@ -101,47 +101,24 @@ def main():
     trnlist, vallist, trnlb, vallb = [], [], [], []
     max_utts = max(label2count.values())
     for label in label2utts:
-        # print('Balancing', label)
         validation_thr = label2count[label] * args.validation_ratio
         random.shuffle(label2utts[label])
         utts_array = np.array(label2utts[label])
         random_indexes = np.random.randint(low=0, high=label2count[label] - 1, size=max_utts)
         trn_indexes = random_indexes[random_indexes > validation_thr]
         val_indexes = random_indexes[random_indexes <= validation_thr]
-        # print(np.max(trn_indexes), np.min(trn_indexes), np.max(val_indexes), np.min(val_indexes))
         trnlist.extend([(x[0], x[1], int(x[2])) for x in utts_array[trn_indexes]])
         trnlb.extend([label for x in range(len(trnlist))])
-        # print(trnlist[:10], trnlb[:10])
-        # 1/0
         vallist.extend([(x[0], x[1], int(x[2])) for x in utts_array[val_indexes]])
         vallb.extend([label for x in range(len(vallist))])
 
-    # print(all_list[:10])
-    # print(label2int)
-    # print(label2count)
-    # 1/0
-
-    # label2val_count, trnlist, vallist, trnlb, vallb = {}, [], [], [], []
-    # for utt in all_list:
-    #     label = utt2label[utt[0]]
-    #     if label not in label2val_count:
-    #         label2val_count[label] = 0
-    #     if label2val_count[label] <= label2count[label] * args.validation_ratio:
-    #         # use for validation
-    #         vallist.append(utt)
-    #         vallb.append(label)
-    #         label2val_count[label] += 1
-    #     else:
-    #         # use for training
-    #         trnlist.append(utt)
-    #         trnlb.append(label)
-
-    # trnlb = keras.utils.to_categorical(trnlb)
-    # vallb = keras.utils.to_categorical(vallb)
+    # Datasets
+    partition = {'train': trnlist, 'val': vallist}
+    labels = {'train': np.array(trnlb), 'val': np.array(vallb)}
 
     # construct the data generator.
     params = {
-        'dim': (args.num_dim, 250, 1),
+        'dim': (250, args.num_dim),
         'mp_pooler': toolkits.set_mp(processes=4 * len(args.gpu.split(',')) + 1),
         'nfft': 512,
         'spec_len': 250,
@@ -155,16 +132,13 @@ def main():
         'use_clean_only': args.use_clean_only
     }
 
-    # Datasets
-    partition = {'train': trnlist, 'val': vallist}
-    labels = {'train': np.array(trnlb), 'val': np.array(vallb)}
+    network = model.vggvox_resnet2d_icassp(input_dim=params['dim'],
+                                           num_class=params['n_classes'],
+                                           mode='train', args=args)
 
     # Generators
     trn_gen = generator.DataGenerator(partition['train'], labels['train'], **params)
     val_gen = generator.DataGenerator(partition['val'], labels['val'], **params)
-    network = model.vggvox_resnet2d_icassp(input_dim=params['dim'],
-                                           num_class=params['n_classes'],
-                                           mode='train', args=args)
 
     # ==> load pre-trained model ???
     mgpu = len(keras.backend.tensorflow_backend._get_available_gpus())

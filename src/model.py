@@ -64,7 +64,7 @@ class VladPooling(keras.engine.Layer):
         cluster_res = K.sum(weighted_res, [1, 2])
 
         if self.mode == 'gvlad':
-            cluster_res = cluster_res[:, :self.k_centers, :]
+            cluster_res = cluster_res[:self.k_centers, :]
 
         cluster_l2 = K.l2_normalize(cluster_res, -1)
         outputs = K.reshape(cluster_l2, [-1, int(self.k_centers) * int(num_features)])
@@ -93,8 +93,9 @@ def vggvox_resnet2d_icassp(input_dim=(30, 250, 1), num_class=8631, mode='train',
     # ===============================================
     #            Fully Connected Block 1
     # ===============================================
-    x_fc = keras.layers.Conv2D(bottleneck_dim, (2, 1),
-                               strides=(1, 1),
+    x_fc = keras.layers.Conv1D(bottleneck_dim,
+                               kernel_size=5,
+                               strides=1,
                                activation='relu',
                                kernel_initializer='orthogonal',
                                use_bias=True, trainable=True,
@@ -124,8 +125,9 @@ def vggvox_resnet2d_icassp(input_dim=(30, 250, 1), num_class=8631, mode='train',
         x = VladPooling(k_centers=vlad_clusters, mode='vlad', name='vlad_pool')([x_fc, x_k_center])
 
     elif aggregation == 'gvlad':
-        x_k_center = keras.layers.Conv2D(vlad_clusters+ghost_clusters, (2, 1),
-                                         strides=(1, 1),
+        x_k_center = keras.layers.Conv1D(vlad_clusters+ghost_clusters,
+                                         kernel_size=5,
+                                         strides=1,
                                          kernel_initializer='orthogonal',
                                          use_bias=True, trainable=True,
                                          kernel_regularizer=keras.regularizers.l2(weight_decay),

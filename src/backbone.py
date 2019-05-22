@@ -22,7 +22,7 @@ def identity_block_2D(input_tensor, filters, stage, block, kernel_size=3, dilati
         Output tensor for the block.
     """
     filters1, filters2, filters3 = filters
-    bn_axis = 3
+    bn_axis = 2
 
     conv_name_1 = 'conv' + str(stage) + '_' + str(block) + '_1x1_reduce'
     bn_name_1 = 'conv' + str(stage) + '_' + str(block) + '_1x1_reduce/bn'
@@ -68,7 +68,8 @@ def identity_block_2D(input_tensor, filters, stage, block, kernel_size=3, dilati
     return x
 
 
-def conv_block_2D(input_tensor, filters, stage, block, strides=(1, 2), kernel_size=3, dilation=2, trainable=True):
+def conv_block_2D(input_tensor, filters, stage, block, kernel_size=3, shortcut_kernel_size=7,
+                  dilation=2, trainable=True):
     """A block that has a conv layer at shortcut.
     # Arguments
         input_tensor: input tensor
@@ -82,7 +83,7 @@ def conv_block_2D(input_tensor, filters, stage, block, strides=(1, 2), kernel_si
     And the shortcut should have strides=(2,2) as well
     """
     filters1, filters2, filters3 = filters
-    bn_axis = 3
+    bn_axis = 2
 
     conv_name_1 = 'conv' + str(stage) + '_' + str(block) + '_1x1_reduce'
     bn_name_1 = 'conv' + str(stage) + '_' + str(block) + '_1x1_reduce/bn'
@@ -126,7 +127,7 @@ def conv_block_2D(input_tensor, filters, stage, block, strides=(1, 2), kernel_si
     conv_name_4 = 'conv' + str(stage) + '_' + str(block) + '_1x1_proj'
     bn_name_4 = 'conv' + str(stage) + '_' + str(block) + '_1x1_proj/bn'
     shortcut = Conv1D(filters3,
-                      kernel_size=kernel_size,
+                      kernel_size=shortcut_kernel_size,
                       dilation_rate=dilation,
                       kernel_initializer='orthogonal',
                       use_bias=False,
@@ -141,7 +142,7 @@ def conv_block_2D(input_tensor, filters, stage, block, strides=(1, 2), kernel_si
 
 
 def resnet_2D_v1(input_dim, mode='train'):
-    bn_axis = 3
+    bn_axis = 2
     if mode == 'train':
         inputs = Input(shape=input_dim, name='input')
     else:
@@ -160,40 +161,44 @@ def resnet_2D_v1(input_dim, mode='train'):
 
     x1 = BatchNormalization(axis=bn_axis, name='conv1_1/3x3_s1/bn', trainable=True)(x1)
     x1 = Activation('relu')(x1)
-    x1 = MaxPooling2D((2, 2), strides=(2, 2))(x1)
+    # x1 = MaxPooling2D((2, 2), strides=(2, 2))(x1)
 
     # ===============================================
     #            Convolution Section 2
     # ===============================================
-    x2 = conv_block_2D(x1, filters=[48, 48, 96], stage=2, block='a', strides=(1, 1), kernel_size=5, dilation=1,
-                       trainable=True)
-    x2 = identity_block_2D(x2, filters=[48, 48, 96], stage=2, block='b', kernel_size=5, trainable=True,
-                           dilation=1)
+    x2 = conv_block_2D(x1, filters=[48, 48, 96], stage=2, block='a', kernel_size=5, dilation=1,
+                       trainable=True, shortcut_kernel_size=9)
+    x2 = identity_block_2D(x2, filters=[48, 48, 96], stage=2, block='b', kernel_size=1, dilation=1,
+                           trainable=True)
 
     # ===============================================
     #            Convolution Section 3
     # ===============================================
-    x3 = conv_block_2D(x2, filters=[96, 96, 128], stage=3, block='a', kernel_size=5, trainable=True)
-    x3 = identity_block_2D(x3, filters=[96, 96, 128], stage=3, block='b', kernel_size=5, trainable=True)
-    x3 = identity_block_2D(x3, filters=[96, 96, 128], stage=3, block='c', kernel_size=5, trainable=True)
+    x3 = conv_block_2D(x2, filters=[96, 96, 128], stage=3, block='a', kernel_size=5, dilation=1, trainable=True,
+                       shortcut_kernel_size=9)
+    x3 = identity_block_2D(x3, filters=[96, 96, 128], stage=3, block='b', kernel_size=1, trainable=True)
+    x3 = identity_block_2D(x3, filters=[96, 96, 128], stage=3, block='c', kernel_size=1, trainable=True)
     # ===============================================
     #            Convolution Section 4
     # ===============================================
-    x4 = conv_block_2D(x3, filters=[128, 128, 256], stage=4, block='a', kernel_size=3, trainable=True)
-    x4 = identity_block_2D(x4, filters=[128, 128, 256], stage=4, block='b', kernel_size=3, trainable=True)
-    x4 = identity_block_2D(x4, filters=[128, 128, 256], stage=4, block='c', kernel_size=3, trainable=True)
+    x4 = conv_block_2D(x3, filters=[128, 128, 256], stage=4, block='a', kernel_size=5, dilation=2,
+                       trainable=True, shortcut_kernel_size=9)
+    x4 = identity_block_2D(x4, filters=[128, 128, 256], stage=4, block='b', kernel_size=1, trainable=True)
+    x4 = identity_block_2D(x4, filters=[128, 128, 256], stage=4, block='c', kernel_size=1, trainable=True)
     # ===============================================
     #            Convolution Section 5
     # ===============================================
-    x5 = conv_block_2D(x4, filters=[256, 256, 512], stage=5, block='a', kernel_size=3, trainable=True)
-    x5 = identity_block_2D(x5, filters=[256, 256, 512], stage=5, block='b', kernel_size=3, trainable=True)
-    x5 = identity_block_2D(x5, filters=[256, 256, 512], stage=5, block='c', kernel_size=3, trainable=True)
-    y = MaxPooling2D((3, 1), strides=(2, 1), name='mpool2')(x5)
+    x5 = conv_block_2D(x4, filters=[256, 256, 512], stage=5, block='a', kernel_size=5, dilation=2,
+                       trainable=True, shortcut_kernel_size=9)
+    x5 = identity_block_2D(x5, filters=[256, 256, 512], stage=5, block='b', kernel_size=1, trainable=True)
+    x5 = identity_block_2D(x5, filters=[256, 256, 512], stage=5, block='c', kernel_size=1, trainable=True)
+    # y = MaxPooling2D((3, 1), strides=(2, 1), name='mpool2')(x5)
+    y = x5
     return inputs, y
 
 
 def resnet_2D_v2(input_dim, mode='train'):
-    bn_axis = 3
+    bn_axis = 2
     if mode == 'train':
         inputs = Input(shape=input_dim, name='input')
     else:
@@ -212,7 +217,7 @@ def resnet_2D_v2(input_dim, mode='train'):
 
     x1 = BatchNormalization(axis=bn_axis, name='conv1_1/3x3_s1/bn', trainable=True)(x1)
     x1 = Activation('relu')(x1)
-    x1 = MaxPooling2D((2, 2), strides=(2, 2))(x1)
+    # x1 = MaxPooling2D((2, 2), strides=(2, 2))(x1)
 
     # ===============================================
     #            Convolution Section 2

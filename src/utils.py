@@ -6,6 +6,7 @@ import subprocess
 import librosa
 import numpy as np
 
+
 # ===============================================
 #       code from Arsha for loading data.
 # ===============================================
@@ -51,3 +52,7 @@ def load_data(path, win_length=400, sr=8000, hop_length=160, n_fft=512, spec_len
     std = np.std(spec_mag, 0, keepdims=True)
     return (spec_mag - mu) / (std + 1e-5)
 
+
+def is_clean(key):
+    return not key.endswith('-babble') and not key.endswith('-noise') and \
+           not key.endswith('-music') and not key.endswith('-reverb')

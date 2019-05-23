@@ -87,6 +87,10 @@ def main():
             if args.use_clean_only:
                 if not is_clean(utt):
                     continue
+            try:
+                ark = utt2ark[utt]
+            except KeyError:
+                continue
             if label not in label2int:
                 label2int[label] = len(label2int)
             label = label2int[label]
@@ -94,6 +98,7 @@ def main():
             if label not in label2count:
                 label2count[label] = 0
             label2count[label] += 1
+      
             if label not in label2utts:
                 label2utts[label] = []
             label2utts[label].append(utt2ark[utt])
@@ -120,7 +125,7 @@ def main():
     # construct the data generator.
     params = {
         'dim': (args.num_dim, 250, 1),
-        'mp_pooler': toolkits.set_mp(processes=8),
+        'mp_pooler': toolkits.set_mp(processes=4),
         'nfft': 512,
         'spec_len': 250,
         'win_length': 400,

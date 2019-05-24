@@ -32,7 +32,7 @@ parser.add_argument('--kaldi-data-dir', required=True, type=str, help='path to k
 parser.add_argument('--use-clean-only', required=False, default=False, action='store_true', help='use only clean data')
 parser.add_argument('--validation-ratio', required=False, type=float, default=0.01,
                     help='ratio of validation data to all training data')
-# parser.add_argument('--files-per-split', required=False, type=int, default=1000, help='number of files in tmp split')
+parser.add_argument('--vad-dir', required=False, default=None, help='path to directory with VAD files')
 # set up network configuration.
 parser.add_argument('--net', default='resnet34s', choices=['resnet34s', 'resnet34l'], type=str)
 parser.add_argument('--ghost_cluster', default=2, type=int)
@@ -125,7 +125,7 @@ def main():
     # construct the data generator.
     params = {
         'dim': (args.num_dim, 250, 1),
-        'mp_pooler': toolkits.set_mp(processes=4),
+        'mp_pooler': toolkits.set_mp(processes=8),
         'nfft': 512,
         'spec_len': 250,
         'win_length': 400,
@@ -134,7 +134,8 @@ def main():
         'sampling_rate': 8000,
         'batch_size': args.batch_size,
         'shuffle': True,
-        'normalize': True
+        'normalize': True,
+        'vad_dir': args.vad_dir
     }
 
     network = model.vggvox_resnet2d_icassp(input_dim=params['dim'],

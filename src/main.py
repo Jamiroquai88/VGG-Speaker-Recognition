@@ -32,7 +32,6 @@ parser.add_argument('--kaldi-data-dir', required=True, type=str, help='path to k
 parser.add_argument('--use-clean-only', required=False, default=False, action='store_true', help='use only clean data')
 parser.add_argument('--validation-ratio', required=False, type=float, default=0.01,
                     help='ratio of validation data to all training data')
-parser.add_argument('--vad-dir', required=False, default=None, help='path to directory with VAD files')
 # set up network configuration.
 parser.add_argument('--net', default='resnet34s', choices=['resnet34s', 'resnet34l'], type=str)
 parser.add_argument('--ghost_cluster', default=2, type=int)
@@ -66,6 +65,7 @@ def main():
     # ==================================
     wav_scp_path = os.path.join(args.kaldi_data_dir, 'wav.scp')
     utt2spk_path = os.path.join(args.kaldi_data_dir, 'utt2spk')
+    vad_path = os.path.join(args.kaldi_data_dir, 'vad.scp')
     assert os.path.exists(wav_scp_path), 'Path `{}` does not exists.'.format(wav_scp_path)
     assert os.path.exists(utt2spk_path), 'Path `{}` does not exists.'.format(utt2spk_path)
 
@@ -110,13 +110,22 @@ def main():
         validation_thr = label2count[label] * args.validation_ratio
         random.shuffle(label2utts[label])
         utts_array = np.array(label2utts[label])
-        random_indexes = np.random.randint(low=0, high=label2count[label] - 1, size=max_utts)
-        trn_indexes = random_indexes[random_indexes > validation_thr]
-        val_indexes = random_indexes[random_indexes <= validation_thr]
-        trnlist.extend([(x[0], x[1]) for x in utts_array[trn_indexes]])
-        trnlb.extend([label for x in range(len(trnlist))])
-        vallist.extend([(x[0], x[1]) for x in utts_array[val_indexes]])
-        vallb.extend([label for x in range(len(vallist))])
+        if label2count[label] - 1 > 0:
+            random_indexes = np.random.randint(low=0, high=label2count[label] - 1, size=max_utts)
+            trn_indexes = random_indexes[random_indexes > validation_thr]
+            val_indexes = random_indexes[random_indexes <= validation_thr]
+            trnlist.extend([(x[0], x[1]) for x in utts_array[trn_indexes]])
+            trnlb.extend([label for x in range(len(trnlist))])
+            vallist.extend([(x[0], x[1]) for x in utts_array[val_indexes]])
+            vallb.extend([label for x in range(len(vallist))])
+
+    # read vad if it exists
+    vad_dict = {}
+    if os.path.exists(vad_path):
+        with open(vad_path) as f:
+            for line in f:
+                key, value = line.split()
+                vad_dict[key] = value
 
     # Datasets
     partition = {'train': trnlist, 'val': vallist}
@@ -135,7 +144,7 @@ def main():
         'batch_size': args.batch_size,
         'shuffle': True,
         'normalize': True,
-        'vad_dir': args.vad_dir
+        'vad_dict': vad_dict
     }
 
     network = model.vggvox_resnet2d_icassp(input_dim=params['dim'],
@@ -229,7 +238,8 @@ def step_decay(epoch):
         gamma = [args.warmup_ratio, 1.0, 0.1, 0.01, 1.0, 0.1, 0.01]
     else:
         milestone = [stage1, stage2, stage3, stage4, stage5, stage6]
-        gamma = [1.0, 0.1, 0.01, 1.0, 0.1, 0.01]
+        # gamma = [1.0, 0.1, 0.01, 1.0, 0.1, 0.01]
+        gamma = [1.0, 1.0, 0.1, 0.1, 0.01, 0.01]
 
     lr = 0.005
     init_lr = args.lr

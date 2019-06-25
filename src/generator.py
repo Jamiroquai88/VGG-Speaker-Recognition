@@ -7,7 +7,7 @@ class DataGenerator(keras.utils.Sequence):
     'Generates data for Keras'
     def __init__(self, list_IDs, labels, dim, mp_pooler, augmentation=True, batch_size=32, nfft=512, spec_len=250,
                  win_length=400, sampling_rate=16000, hop_length=160, n_classes=5994, shuffle=True, normalize=True,
-                 vad_dir=None):
+                 vad_dict=None):
         'Initialization'
         self.dim = dim
         self.nfft = nfft
@@ -25,7 +25,7 @@ class DataGenerator(keras.utils.Sequence):
         self.batch_size = batch_size
         self.augmentation = augmentation
         self.on_epoch_end()
-        self.vad_dir = vad_dir
+        self.vad_dict = vad_dict
 
     def __len__(self):
         'Denotes the number of batches per epoch'
@@ -55,7 +55,7 @@ class DataGenerator(keras.utils.Sequence):
     def __data_generation_mp(self, list_IDs_temp, indexes):
         X = [self.mp_pooler.apply_async(ut.load_data,
                                         args=(ID, self.win_length, self.sr, self.hop_length,
-                                              self.nfft, self.spec_len, self.vad_dir)) for ID in list_IDs_temp]
+                                              self.nfft, self.spec_len, self.vad_dict.get(ID[0], None))) for ID in list_IDs_temp]
         X = np.expand_dims(np.array([p.get() for p in X]), -1)
         y = self.labels[indexes]
         return X, keras.utils.to_categorical(y, num_classes=self.n_classes)
@@ -71,7 +71,7 @@ class DataGenerator(keras.utils.Sequence):
         for i, ID in enumerate(list_IDs_temp):
             # Store sample
             X[i, :, :, 0] = ut.load_data(ID, win_length=self.win_length, sr=self.sr, hop_length=self.hop_length,
-                                         n_fft=self.nfft, spec_len=self.spec_len, vad_dir=self.vad_dir)
+                                         n_fft=self.nfft, spec_len=self.spec_len, vad_file=self.vad_dict.get(ID, None))
             # Store class
             y[i] = self.labels[indexes[i]]
 

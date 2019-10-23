@@ -6,9 +6,9 @@ import utils as ut
 
 class DataGenerator(keras.utils.Sequence):
     'Generates data for Keras'
-    def __init__(self, list_IDs, labels, dim, mp_pooler, augmentation=True, batch_size=32, nfft=512, spec_len=250,
+    def __init__(self, list_IDs, labels, dim, mp_pooler, augmentation=True, batch_size=32, nfft=512, spec_len=300,
                  win_length=400, sampling_rate=16000, hop_length=160, n_classes=5994, shuffle=True, normalize=True,
-                 tmp_dir='../data', use_clean_only=False):
+                 use_clean_only=False):
         'Initialization'
         self.dim = dim
         self.nfft = nfft

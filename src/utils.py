@@ -13,7 +13,7 @@ import numpy as np
 import kaldi_io
 
 
-def load_data(path, mode='train', spec_len=250):
+def load_data(path, mode='train', spec_len=300):
     """
 
     Args:
@@ -25,16 +25,26 @@ def load_data(path, mode='train', spec_len=250):
         np.array: loaded features
     """
     utt, ark, position = path
-    mat = list(kaldi_io.read_mat_ark(ark, offset=position))[0]
-    segments = mat.transpose().copy()
+    try:
+        mat = list(kaldi_io.read_mat_ark(ark, offset=position))[0]
+        segments = mat.transpose().copy()
 
-    assert len(segments.shape) == 2, 'Segment `{}` for path `{}` does not have 2 dimensions.'.format(utt, ark)
+        assert len(segments.shape) == 2, 'Segment `{}` for path `{}` does not have 2 dimensions.'.format(utt, ark)
 
-    signal_len = segments.shape[1]
-    if mode == 'train':
-        randtime = np.random.randint(0, signal_len - spec_len)
-        segments = segments[:, randtime:randtime + spec_len]
-    return segments
+        signal_len = segments.shape[1]
+
+        if mode == 'train':
+            if signal_len <= spec_len:
+                for i in range(spec_len / signal_len):
+                    segments = np.concatenate((segments, segments), axis=1)
+                signal_len = segments.shape[1]
+
+            randtime = np.random.randint(0, signal_len - spec_len)
+            segments = segments[:, randtime:randtime + spec_len]
+        return segments
+    except AssertionError:
+        print('Problem with utterance', utt, ark, position)
+        return np.zeros(shape=(30, spec_len))
 
 
 def is_clean(key):

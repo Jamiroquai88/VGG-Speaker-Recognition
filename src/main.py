@@ -200,7 +200,7 @@ def step_decay(epoch):
         gamma = [args.warmup_ratio, 1.0, 0.1, 0.01, 1.0, 0.1, 0.01]
     else:
         milestone = [stage1, stage2, stage3, stage4, stage5, stage6]
-        gamma = [1.0, 0.1, 0.01, 1.0, 0.1, 0.01]
+        gamma = [1.0, 0.50, 0.25, 1.0, 0.50, 0.25]
 
     lr = 0.005
     init_lr = args.lr

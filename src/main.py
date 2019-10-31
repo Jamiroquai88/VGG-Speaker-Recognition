@@ -30,9 +30,6 @@ parser.add_argument('--resume', default='', type=str)
 parser.add_argument('--batch_size', default=64, type=int)
 parser.add_argument('--kaldi-data-dir', required=True, type=str, help='path to kaldi data directory')
 parser.add_argument('--use-clean-only', required=False, default=False, action='store_true', help='use only clean data')
-parser.add_argument('--validation-ratio', required=False, type=float, default=0.01,
-                    help='ratio of validation data to all training data')
-# parser.add_argument('--files-per-split', required=False, type=int, default=1000, help='number of files in tmp split')
 # set up network configuration.
 parser.add_argument('--net', default='resnet34s', choices=['resnet34s', 'resnet34l'], type=str)
 parser.add_argument('--ghost_cluster', default=2, type=int)
@@ -47,7 +44,7 @@ parser.add_argument('--loss', default='softmax', choices=['softmax', 'amsoftmax'
 parser.add_argument('--optimizer', default='adam', choices=['adam', 'sgd'], type=str)
 parser.add_argument('--ohem_level', default=0, type=int,
                     help='pick hard samples from (ohem_level * batch_size) proposals, must be > 1')
-parser.add_argument('--num-dim', default=257, type=int, help='dimensionality of the features')
+parser.add_argument('--num-dim', default=30, type=int, help='dimensionality of the features')
 
 global args
 args = parser.parse_args()
@@ -64,86 +61,65 @@ def main():
     # ==================================
     #       Get Train/Val.
     # ==================================
-    wav_scp_path = os.path.join(args.kaldi_data_dir, 'wav.scp')
+    feats_path = os.path.join(args.kaldi_data_dir, 'feats.scp')
     utt2spk_path = os.path.join(args.kaldi_data_dir, 'utt2spk')
-    assert os.path.exists(wav_scp_path), 'Path `{}` does not exists.'.format(wav_scp_path)
+    assert os.path.exists(feats_path), 'Path `{}` does not exists.'.format(feats_path)
     assert os.path.exists(utt2spk_path), 'Path `{}` does not exists.'.format(utt2spk_path)
 
     utt2ark = {}
-    with open(wav_scp_path) as f:
+    print('Reading `{}`.'.format(feats_path))
+    with open(feats_path) as f:
         for line in f:
-            splitted_line = line.split()
-            key = splitted_line[0]
+            utt, ark = line.split()
             if args.use_clean_only:
-                if not is_clean(key):
+                if not is_clean(utt):
                     continue
-            cmd = splitted_line[1:]
-            utt2ark[key] = (key, cmd)
+            ark, position = ark.split(':')
+            assert os.path.exists(ark), 'Path `{}` to ark does not exist.'.format(ark)
+            utt2ark[utt] = (utt, ark, int(position))
 
-    label2count, utt2label, label2int, label2utts = {}, {}, {}, {}
+    print('Reading `{}`.'.format(utt2spk_path))
+    label2int, trnlist, trnlb = {}, [], []
     with open(utt2spk_path) as f:
         for line in f:
             utt, label = line.split()
             if args.use_clean_only:
                 if not is_clean(utt):
                     continue
-            try:
-                ark = utt2ark[utt]
-            except KeyError:
-                continue
             if label not in label2int:
                 label2int[label] = len(label2int)
             label = label2int[label]
-            utt2label[utt] = label
-            if label not in label2count:
-                label2count[label] = 0
-            label2count[label] += 1
-      
-            if label not in label2utts:
-                label2utts[label] = []
-            label2utts[label].append(utt2ark[utt])
+            trnlist.append(utt2ark[utt])
+            trnlb.append(label)
 
-    # balancing classes
-    trnlist, vallist, trnlb, vallb = [], [], [], []
-    max_utts = max(label2count.values())
-    for label in label2utts:
-        validation_thr = label2count[label] * args.validation_ratio
-        random.shuffle(label2utts[label])
-        utts_array = np.array(label2utts[label])
-        random_indexes = np.random.randint(low=0, high=label2count[label] - 1, size=max_utts)
-        trn_indexes = random_indexes[random_indexes > validation_thr]
-        val_indexes = random_indexes[random_indexes <= validation_thr]
-        trnlist.extend([(x[0], x[1]) for x in utts_array[trn_indexes]])
-        trnlb.extend([label for x in range(len(trnlist))])
-        vallist.extend([(x[0], x[1]) for x in utts_array[val_indexes]])
-        vallb.extend([label for x in range(len(vallist))])
-
-    # Datasets
-    partition = {'train': trnlist, 'val': vallist}
-    labels = {'train': np.array(trnlb), 'val': np.array(vallb)}
+    del label2int
+    del utt2ark
 
     # construct the data generator.
     params = {
-        'dim': (args.num_dim, 250, 1),
-        'mp_pooler': toolkits.set_mp(processes=4),
+        'dim': (args.num_dim, 300, 1),
+        'mp_pooler': toolkits.set_mp(processes=24),
         'nfft': 512,
-        'spec_len': 250,
+        'spec_len': 300,
         'win_length': 400,
         'hop_length': 160,
-        'n_classes': len(label2count),
-        'sampling_rate': 8000,
+        'n_classes': len(set(trnlb)),
+        'sampling_rate': 16000,
         'batch_size': args.batch_size,
         'shuffle': True,
-        'normalize': True
+        'normalize': True,
+        'use_clean_only': args.use_clean_only
     }
 
-    network = model.vggvox_resnet2d_icassp(input_dim=params['dim'],
-                                           num_class=params['n_classes'],
-                                           mode='train', args=args)
+    # Datasets
+    partition = {'train': trnlist}
+    labels = {'train': np.array(trnlb)}
 
     # Generators
     trn_gen = generator.DataGenerator(partition['train'], labels['train'], **params)
-    val_gen = generator.DataGenerator(partition['val'], labels['val'], **params)
+    network = model.vggvox_resnet2d_icassp(input_dim=params['dim'],
+                                           num_class=params['n_classes'],
+                                           mode='train', args=args)
 
     # ==> load pre-trained model ???
     mgpu = len(keras.backend.tensorflow_backend._get_available_gpus())
@@ -156,9 +132,8 @@ def main():
             print("==> no checkpoint found at '{}'".format(args.resume))
 
     print(network.summary())
-    print('==> gpu {} is, training {} features, validating {} features, classes: 0-{} '
-          'loss: {}, aggregation: {}, ohemlevel: {}'.format(args.gpu, len(partition['train']),
-                                                            len(partition['val']), np.max(labels['train']),
+    print('==> gpu {} - training {} features, classes: 0-{} '
+          'loss: {}, aggregation: {}, ohemlevel: {}'.format(args.gpu, len(partition['train']), np.max(labels['train']),
                                                             args.loss, args.aggregation_mode, args.ohem_level))
 
     model_path, log_path = set_path(args)
@@ -195,9 +170,8 @@ def main():
                               callbacks=callbacks,
                               use_multiprocessing=False,
                               workers=1,
-                              verbose=1,
-                              validation_data=val_gen,
-                              validation_steps=int(len(vallist) // args.batch_size))
+                              verbose=1)
+
 
     else:
         network.fit_generator(trn_gen,
@@ -207,9 +181,7 @@ def main():
                               callbacks=callbacks,
                               use_multiprocessing=False,
                               workers=1,
-                              verbose=1,
-                              validation_data=val_gen,
-                              validation_steps=int(len(vallist) // args.batch_size))
+                              verbose=1)
 
 
 def step_decay(epoch):
@@ -228,7 +200,7 @@ def step_decay(epoch):
         gamma = [args.warmup_ratio, 1.0, 0.1, 0.01, 1.0, 0.1, 0.01]
     else:
         milestone = [stage1, stage2, stage3, stage4, stage5, stage6]
-        gamma = [1.0, 0.1, 0.01, 1.0, 0.1, 0.01]
+        gamma = [1.0, 0.50, 0.25, 1.0, 0.50, 0.25]
 
     lr = 0.005
     init_lr = args.lr

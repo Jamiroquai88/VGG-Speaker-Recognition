@@ -3,6 +3,9 @@ from __future__ import print_function
 import os
 import sys
 import numpy as np
+import keras2onnx
+import onnx
+import onnxruntime
 
 sys.path.append('../tool')
 import toolkits
@@ -15,6 +18,11 @@ import pdb
 #        Parse the argument
 # ===========================================
 import argparse
+
+
+XVEC_PER_ARK = 100
+
+
 parser = argparse.ArgumentParser()
 # set up training configuration.
 parser.add_argument('--gpu', default='', type=str)
@@ -48,7 +56,7 @@ def main():
     #       Get Model
     # ==================================
     # construct the data generator.
-    params = {'dim': (23, None, 1),
+    params = {'dim': (30, None, 1),
               'nfft': 512,
               'spec_len': 250,
               'win_length': 400,
@@ -62,51 +70,81 @@ def main():
                                                 num_class=params['n_classes'],
                                                 mode='eval', args=args)
 
-    utt2ark, utt2idx, all_list, utt2data = {}, {}, [], {}
-    for idx, kaldi_data_dir in enumerate(args.kaldi_data_dirs):
-        if not os.path.exists(args.emb_out_dirs[idx]):
-            os.makedirs(args.emb_out_dirs[idx])
-        feats_path = os.path.join(kaldi_data_dir, 'feats.scp')
-        vad_path = os.path.join(kaldi_data_dir, 'vad.scp')
-        assert os.path.exists(feats_path), 'Path `{}` does not exists.'.format(feats_path)
-
-        with open(feats_path) as f:
-            for line in f:
-                key, ark = line.split()
-                ark, position = ark.split(':')
-                input_tuple = (key, ark, int(position))
-                utt2data[key] = ut.load_data(input_tuple, mode='eval')
-                utt2idx[key] = idx
-
-        with open(vad_path) as f:
-            for line in f:
-                key, ark = line.split()
-                ark, position = ark.split(':')
-                vad_array = None
-                for ark_key, vec in kaldi_io.read_vec_flt_ark(ark):
-                    if key == ark_key:
-                        vad_array = np.array(vec, dtype=bool)
-                assert vad_array is not None
-
-                assert vad_array.size == utt2data[key].shape[1], 'Shapes does not fit: vad {}, mfcc {}'.format(
-                    vad_array.size, utt2data[key].shape[1])
-                utt2data[key] = ut.apply_cmvn_sliding(utt2data[key]).T[vad_array]
-
     # ==> load pre-trained model ???
     if os.path.isfile(args.resume):
         network_eval.load_weights(os.path.join(args.resume), by_name=True)
         print('==> successfully loaded model {}.'.format(args.resume))
     else:
         raise IOError("==> no checkpoint found at '{}'".format(args.resume))
+    network_eval.summary()    
+    onnx_model = keras2onnx.convert_keras(network_eval, network_eval.name)
+    onnx.save_model(onnx_model, f'{os.path.splitext(args.resume)[0]}.onnx')
+    content = onnx_model.SerializeToString()
+    onnx_sess = onnxruntime.InferenceSession(f'{os.path.splitext(args.resume)[0]}.onnx')
+    onnx_input_name = onnx_sess.get_inputs()[0].name
+    onnx_label_name = onnx_sess.get_outputs()[0].name
 
-    print('==> start testing.')
+    for data_dir_idx, kaldi_data_dir in enumerate(args.kaldi_data_dirs):
+        if not os.path.exists(args.emb_out_dirs[data_dir_idx]):
+            os.makedirs(args.emb_out_dirs[data_dir_idx])
+        feats_path = os.path.join(kaldi_data_dir, 'feats.scp')
+        vad_path = os.path.join(kaldi_data_dir, 'vad.scp')
+        assert os.path.exists(feats_path), 'Path `{}` does not exists.'.format(feats_path)
+        
+        vad_dict = None
+        if os.path.exists(vad_path):
+            print('Loading VAD ...')
+            vad_dict, processed_vad_arks = {}, []
+            with open(vad_path) as f:
+                lines = f.readlines()
+                num_lines = len(lines)
+                for idx, line in enumerate(lines):
+                    if idx % 100 == 99:
+                        break
+                        print(f'Loaded {idx}/{num_lines}.')
+                    key, ark = line.split()
+                    ark, position = ark.split(':')
+                    if ark not in processed_vad_arks:
+                        for ark_key, vec in kaldi_io.read_vec_flt_ark(ark):
+                            vad_dict[ark_key] = np.array(vec, dtype=bool)
 
-    # The feature extraction process has to be done sample-by-sample,
-    # because each sample is of different lengths.
-    for idx, utt in enumerate(utt2data):
-        embedding = network_eval.predict(utt2data[utt].T[np.newaxis, :, :, np.newaxis]).squeeze()
-        ut.write_txt_vectors(
-            os.path.join(args.emb_out_dirs[utt2idx[utt]], 'xvector.{}.txt'.format(idx)), {utt: embedding})
+        print('Generating embeddings ...')
+        emb_dict = {}
+        with open(feats_path) as f:
+            lines = f.readlines()
+            num_lines = len(lines)
+            for idx, line in enumerate(lines):
+                if idx % XVEC_PER_ARK == 0:
+                    xvec_ark_idx = idx / XVEC_PER_ARK
+                    print(f'Processed {idx}/{num_lines}')
+                    if len(emb_dict) > 0:
+                        ut.write_txt_vectors(
+                            os.path.join(args.emb_out_dirs[data_dir_idx], 'xvector.{}.txt'.format(xvec_ark_idx)), emb_dict)
+                    emb_dict = {}
+                key, ark = line.split()
+                ark, position = ark.split(':')
+                input_tuple = (key, ark, int(position))
+                fea = ut.load_data(input_tuple, mode='eval')
+                if vad_dict is not None:
+                    vad = vad_dict[key]
+                    assert vad.size == fea.shape[1], 'Shapes does not fit: vad {}, mfcc {}'.format(
+                        vad.size, fea.shape[1])
+                    fea = ut.apply_cmvn_sliding(fea.T)[vad]
+                else:
+                    fea = fea.T
+                # cut recording which have over 2 minutes
+                fea = fea[:12000, :]
+                try:
+                    embedding = onnx_sess.run([onnx_label_name], {onnx_input_name: fea.T[np.newaxis, :, :, np.newaxis]})
+                    assert len(embedding) == 1
+                    embedding = embedding[0].squeeze() 
+                    emb_dict[key] = embedding
+                except RuntimeError:
+                    pass
+
+            if len(emb_dict) > 0:
+                ut.write_txt_vectors(
+                    os.path.join(args.emb_out_dirs[data_dir_idx], 'xvector.{}.txt'.format(xvec_ark_idx)), emb_dict)
 
 
 if __name__ == "__main__":

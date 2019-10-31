@@ -134,13 +134,10 @@ def main():
                     fea = fea.T
                 # cut recording which have over 2 minutes
                 fea = fea[:12000, :]
-                try:
-                    embedding = onnx_sess.run([onnx_label_name], {onnx_input_name: fea.T[np.newaxis, :, :, np.newaxis]})
-                    assert len(embedding) == 1
-                    embedding = embedding[0].squeeze() 
-                    emb_dict[key] = embedding
-                except RuntimeError:
-                    pass
+                embedding = onnx_sess.run([onnx_label_name], {onnx_input_name: fea.T[np.newaxis, :, :, np.newaxis]})
+                assert len(embedding) == 1
+                embedding = embedding[0].squeeze() 
+                emb_dict[key] = embedding
 
             if len(emb_dict) > 0:
                 ut.write_txt_vectors(

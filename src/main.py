@@ -14,6 +14,9 @@ sys.path.append('../tool')
 from utils import is_clean
 import toolkits
 
+from keras.utils import plot_model
+
+
 # ===========================================
 #        Parse the argument
 # ===========================================
@@ -44,7 +47,7 @@ parser.add_argument('--loss', default='softmax', choices=['softmax', 'amsoftmax'
 parser.add_argument('--optimizer', default='adam', choices=['adam', 'sgd'], type=str)
 parser.add_argument('--ohem_level', default=0, type=int,
                     help='pick hard samples from (ohem_level * batch_size) proposals, must be > 1')
-parser.add_argument('--num-dim', default=30, type=int, help='dimensionality of the features')
+parser.add_argument('--num-dim', default=64, type=int, help='dimensionality of the features')
 
 global args
 args = parser.parse_args()
@@ -97,10 +100,10 @@ def main():
 
     # construct the data generator.
     params = {
-        'dim': (args.num_dim, 300, 1),
+        'dim': (args.num_dim, 200, 1),
         'mp_pooler': toolkits.set_mp(processes=24),
         'nfft': 512,
-        'spec_len': 300,
+        'spec_len': 200,
         'win_length': 400,
         'hop_length': 160,
         'n_classes': len(set(trnlb)),
@@ -131,7 +134,7 @@ def main():
         else:
             print("==> no checkpoint found at '{}'".format(args.resume))
 
-    print(network.summary())
+    network.summary()
     print('==> gpu {} - training {} features, classes: 0-{} '
           'loss: {}, aggregation: {}, ohemlevel: {}'.format(args.gpu, len(partition['train']), np.max(labels['train']),
                                                             args.loss, args.aggregation_mode, args.ohem_level))
@@ -200,7 +203,7 @@ def step_decay(epoch):
         gamma = [args.warmup_ratio, 1.0, 0.1, 0.01, 1.0, 0.1, 0.01]
     else:
         milestone = [stage1, stage2, stage3, stage4, stage5, stage6]
-        gamma = [1.0, 0.50, 0.25, 1.0, 0.50, 0.25]
+        gamma = [1.0, 0.50, 0.25, 0.1, 0.05, 0.025]
 
     lr = 0.005
     init_lr = args.lr

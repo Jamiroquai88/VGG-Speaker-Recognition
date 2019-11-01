@@ -13,7 +13,7 @@ import numpy as np
 import kaldi_io
 
 
-def load_data(path, mode='train', spec_len=300):
+def load_data(path, mode='train', spec_len=200):
     """
 
     Args:
@@ -26,8 +26,12 @@ def load_data(path, mode='train', spec_len=300):
     """
     utt, ark, position = path
     try:
-        mat = list(kaldi_io.read_mat_ark(ark, offset=position))[0]
-        segments = mat.transpose().copy()
+        with open(ark, 'rb') as f:
+            f.seek(position - len(utt) - 1)
+            ark_key = kaldi_io.read_key(f)
+            assert ark_key == utt, 'Keys does not match: `{}` and `{}`.'.format(ark_key, utt)
+            mat = kaldi_io.read_mat(f)
+            segments = mat.transpose().copy()
 
         assert len(segments.shape) == 2, 'Segment `{}` for path `{}` does not have 2 dimensions.'.format(utt, ark)
 
